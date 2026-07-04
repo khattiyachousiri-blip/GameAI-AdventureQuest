@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Adventure Quest - ภารกิจพิชิตโลกปัญญาประดิษฐ์</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Chakra Petch', 'sans-serif'],
+                        sci: ['Orbitron', 'sans-serif'],
+                    },
+                    colors: {
+                        neon: { blue: '#00f3ff', pink: '#ff00ff', green: '#00ff66', alert: '#ff3333' },
+                        dark: { bg: '#050510', panel: 'rgba(10, 15, 30, 0.7)' }
+                    },
+                    boxShadow: {
+                        'neon-blue': '0 0 10px #00f3ff, 0 0 20px #00f3ff',
+                        'neon-pink': '0 0 10px #ff00ff, 0 0 20px #ff00ff',
+                        'neon-green': '0 0 10px #00ff66, 0 0 20px #00ff66',
+                        'glass': '0 8px 32px 0 rgba(0, 243, 255, 0.15)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root {
+            --glow-color: #00f3ff;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            background-color: #050510; color: white; user-select: none;
+            touch-action: none; /* Prevent pinch zoom on touch devices */
+        }
+
+        /* 3D Text & Gradients */
+        .text-3d {
+            background: linear-gradient(to bottom, #ffffff, #00f3ff);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0px 4px 2px rgba(0,243,255,0.4)) drop-shadow(0px 0px 10px rgba(0,243,255,0.8));
+        }
+        .text-3d-pink {
+            background: linear-gradient(to bottom, #ffffff, #ff00ff);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0px 4px 2px rgba(255,0,255,0.4)) drop-shadow(0px 0px 10px rgba(255,0,255,0.8));
+        }
+
+        /* Glassmorphism */
+        .glass-panel {
+            background: rgba(10, 20, 40, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 243, 255, 0.1);
+        }
+
+        /* Animations */
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        @keyframes pulse-glow { 0% { box-shadow: 0 0 5px var(--glow-color); } 50% { box-shadow: 0 0 20px var(--glow-color), 0 0 30px var(--glow-color); } 100% { box-shadow: 0 0 5px var(--glow-color); } }
+        @keyframes blink-red { 0% { background-color: rgba(255,0,0,0.2); border-color: red; } 50% { background-color: rgba(255,0,0,0.6); border-color: #ff3333; box-shadow: 0 0 20px red; } 100% { background-color: rgba(255,0,0,0.2); border-color: red; } }
+        @keyframes blink-green { 0% { background-color: rgba(0,255,0,0.2); border-color: #00ff66; } 50% { background-color: rgba(0,255,0,0.6); border-color: #00ff66; box-shadow: 0 0 20px #00ff66; } 100% { background-color: rgba(0,255,0,0.2); border-color: #00ff66; } }
+
+        .floating { animation: float 3s ease-in-out infinite; }
+        .hover-scale { transition: transform 0.2s, box-shadow 0.2s, filter 0.2s; }
+        .hover-scale:hover, .is-hovered { transform: scale(1.1) translateY(-5px); z-index: 50; filter: brightness(1.2); }
+        .is-grabbed { transform: scale(0.95); opacity: 0.9; z-index: 100; pointer-events: none; }
+        
+        .slot-pulse { animation: pulse-glow 1.5s infinite; border-color: var(--glow-color); }
+        .correct-anim { animation: blink-green 0.5s 3; }
+        .wrong-anim { animation: blink-red 0.5s 3; }
+
+        /* Game Elements */
+        .game-card {
+            position: absolute; width: 140px; height: auto; min-height: 140px;
+            cursor: grab; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; padding: 8px; border-radius: 12px;
+            background: linear-gradient(135deg, rgba(20,40,60,0.9), rgba(10,20,30,0.9));
+            border: 2px solid rgba(0, 243, 255, 0.5);
+            box-shadow: inset 0 0 10px rgba(0,243,255,0.2), 0 5px 15px rgba(0,0,0,0.5);
+            transition: top 0.2s ease, left 0.2s ease; /* Smooth snapping */
+        }
+        .game-card img { width: 80px; height: 80px; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); border-radius: 8px; margin-bottom: 4px; }
+        .game-card span { font-size: 0.8rem; font-weight: 600; line-height: 1.2; text-shadow: 1px 1px 2px black; }
+
+        .drop-zone {
+            border: 2px dashed rgba(255,255,255,0.3); border-radius: 16px;
+            display: flex; flex-direction: column; align-items: center; padding: 10px;
+            background: rgba(0,0,0,0.3); transition: all 0.3s;
+            position: relative; overflow: visible;
+        }
+
+        /* Canvas Layers */
+        #bgCanvas { position: absolute; top: 0; left: 0; z-index: 0; pointer-events: none; }
+        #arCanvas { position: absolute; top: 0; left: 0; z-index: 9999; pointer-events: none; }
+        #uiLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .pointer-events-auto { pointer-events: auto; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 243, 255, 0.5); border-radius: 3px; }
+
+        /* Cursor */
+        #custom-cursor {
+            position: absolute; width: 30px; height: 30px; margin-left: -15px; margin-top: -15px;
+            border-radius: 50%; border: 2px solid #00f3ff; background: rgba(0, 243, 255, 0.2);
+            pointer-events: none; z-index: 10000; transition: transform 0.1s, background-color 0.2s;
+            box-shadow: 0 0 10px #00f3ff; display: none; justify-content: center; align-items: center;
+        }
+        #custom-cursor::after { content: ''; width: 6px; height: 6px; background: white; border-radius: 50%; }
+        .cursor-pinch { transform: scale(0.6); background: rgba(255, 0, 255, 0.5) !important; border-color: #ff00ff !important; box-shadow: 0 0 15px #ff00ff !important; }
+
+        /* Input styling */
+        input { background: rgba(0,0,0,0.5); border: 1px solid #00f3ff; color: white; padding: 10px; border-radius: 8px; outline: none; text-align: center; }
+        input:focus { border-color: #ff00ff; box-shadow: 0 0 10px #ff00ff; }
+
+        .btn-cyber {
+            background: linear-gradient(45deg, transparent 5%, #00f3ff 5%);
+            color: #050510; font-weight: bold; font-family: 'Orbitron', sans-serif;
+            text-transform: uppercase; padding: 12px 30px; border: none; cursor: pointer;
+            box-shadow: 6px 0px 0px #00e6f2; transition: all 0.2s; position: relative;
+        }
+        .btn-cyber:hover { box-shadow: 0 0 15px #00f3ff, 0 0 30px #00f3ff; background: linear-gradient(45deg, transparent 5%, #fff 5%); }
+        .btn-cyber:active { transform: translateY(2px); box-shadow: 2px 0px 0px #00e6f2; }
+        
+        .btn-success { background: linear-gradient(45deg, transparent 5%, #00ff66 5%); box-shadow: 6px 0px 0px #00cc52; }
+        .btn-success:hover { box-shadow: 0 0 15px #00ff66, 0 0 30px #00ff66; background: linear-gradient(45deg, transparent 5%, #fff 5%); }
+
+        .screen { display: none; width: 100%; height: 100%; position: absolute; top:0; left:0; flex-direction: column; }
+        .active-screen { display: flex; }
+    </style>
+</head>
+<body>
+
+    <!-- Background Canvas for Particles -->
+    <canvas id="bgCanvas"></canvas>
+    
+    <!-- AR Canvas and Video Element (Hidden) -->
+    <video id="webcam" autoplay playsinline style="display: none;"></video>
+    <canvas id="arCanvas"></canvas>
+    
+    <!-- Custom AR Cursor -->
+    <div id="custom-cursor"></div>
+
+    <!-- UI Layer -->
+    <div id="uiLayer">
+        
+        <!-- Top HUD Controls -->
+        <div class="absolute top-4 right-4 z-50 flex gap-4 pointer-events-auto">
+            <button id="btnToggleMode" class="glass-panel px-4 py-2 text-sm flex items-center gap-2 hover:bg-white/10 transition">
+                <span id="modeIcon">🖱️</span> <span id="modeText">Mouse Mode</span>
+            </button>
+            <button id="btnToggleAudio" class="glass-panel px-4 py-2 text-sm hover:bg-white/10 transition">
+                🔊
+            </button>
+        </div>
+
+        <div class="absolute top-4 left-4 z-50 pointer-events-auto">
+            <div id="fpsCounter" class="text-xs text-neon-blue font-mono bg-black/50 p-1 rounded">FPS: 0</div>
+            <div id="statusMsg" class="text-xs text-neon-pink mt-1">Initializing...</div>
+        </div>
+
+        <!-- Footer -->
+        <div class="absolute bottom-2 right-4 z-50 pointer-events-auto flex items-center gap-3">
+            <div class="text-right text-xs opacity-70">
+                <p>ผู้จัดทำ</p>
+                <p class="text-neon-blue font-bold">นางขัตติยา เชาวน์ศิริ</p>
+            </div>
+            <img src="https://img2.pic.in.th/--13c270469c90bd13c.png" alt="Logo" class="w-12 h-12 object-contain" style="filter: drop-shadow(0 0 10px #00f3ff);">
+        </div>
+
+        <!-- SCREEN 1: Login -->
+        <div id="screenLogin" class="screen active-screen items-center justify-center pointer-events-auto relative">
+            <div class="glass-panel p-10 max-w-lg w-full text-center z-10 flex flex-col items-center">
+                <h1 class="font-sci text-5xl md:text-6xl font-black mb-2 text-3d tracking-wider floating">AI ADVENTURE</h1>
+                <h2 class="text-2xl font-bold mb-8 text-neon-blue">ภารกิจพิชิตโลกปัญญาประดิษฐ์</h2>
+                
+                <form id="loginForm" class="w-full flex flex-col gap-4">
+                    <input type="text" id="playerName" placeholder="ชื่อ - นามสกุล" required>
+                    <div class="flex gap-4">
+                        <input type="text" id="playerClass" placeholder="ชั้น (เช่น ม.1)" class="w-1/2" required>
+                        <input type="number" id="playerRoom" placeholder="ห้อง" class="w-1/2" required>
+                    </div>
+                    <button type="submit" class="btn-cyber mt-6 text-xl">เข้าสู่เกม</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- SCREEN 2: Instructions -->
+        <div id="screenGuide" class="screen items-center justify-center pointer-events-auto relative">
+            <div class="glass-panel p-8 max-w-4xl w-[90%] max-h-[90%] overflow-y-auto z-10 flex flex-col">
+                <h2 class="font-sci text-4xl text-center text-3d-pink mb-6">SYSTEM INSTRUCTIONS</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <div class="bg-black/40 p-4 rounded-xl border border-neon-blue/30">
+                        <h3 class="text-xl text-neon-blue mb-4 border-b border-neon-blue/30 pb-2">🎥 AR Hand Mode (เปิดกล้อง)</h3>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-start"><span class="mr-2">🖐️</span> วางมือให้เห็นชัดเจนในกล้อง (ซ้ายหรือขวา)</li>
+                            <li class="flex items-start"><span class="mr-2">🤏</span> <b>หยิบการ์ด:</b> จีบนิ้วโป้งและนิ้วชี้เข้าหากัน</li>
+                            <li class="flex items-start"><span class="mr-2">↔️</span> <b>ลาก:</b> จีบนิ้วค้างไว้แล้วขยับมือ</li>
+                            <li class="flex items-start"><span class="mr-2">🖐️</span> <b>วาง:</b> กางนิ้วออกเมื่ออยู่เหนือช่องที่ต้องการ</li>
+                            <li class="text-neon-pink mt-2 text-xs">*หากระบบไม่พบมือ 3 วินาที จะสลับเป็น Mouse อัตโนมัติ</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="bg-black/40 p-4 rounded-xl border border-neon-pink/30">
+                        <h3 class="text-xl text-neon-pink mb-4 border-b border-neon-pink/30 pb-2">🖱️ Mouse / Touch Mode</h3>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-start"><span class="mr-2">👆</span> <b>หยิบ:</b> คลิกซ้ายค้างที่การ์ด หรือ แตะค้าง</li>
+                            <li class="flex items-start"><span class="mr-2">↔️</span> <b>ลาก:</b> ลากเมาส์ หรือ ลากนิ้วบนหน้าจอ</li>
+                            <li class="flex items-start"><span class="mr-2">ปล่อย:</span> ปล่อยเมาส์ หรือ ปล่อยนิ้วเมื่อตรงช่อง</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="text-center mt-auto">
+                    <button id="btnStartGame" class="btn-cyber btn-success text-2xl floating">เริ่มเกม! / START</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCREEN 3: Game Level -->
+        <div id="screenGame" class="screen pointer-events-none relative flex-col">
+            <!-- Header (Timer, Score, Progress) -->
+            <div class="h-[15%] min-h-[80px] w-full flex justify-between items-center px-8 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto">
+                <div class="flex flex-col">
+                    <span class="font-sci text-xl text-neon-blue" id="levelTitle">LEVEL 1: Mission</span>
+                    <div class="w-48 h-3 bg-gray-800 rounded-full mt-1 border border-neon-blue/50 overflow-hidden relative">
+                        <div id="progressBar" class="h-full bg-neon-blue w-0 transition-all duration-500 shadow-neon-blue"></div>
+                        <span id="progressText" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold">0%</span>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-8">
+                    <div class="text-center glass-panel px-6 py-2">
+                        <div class="text-xs text-gray-400 font-sci">TIME</div>
+                        <div id="timerDisplay" class="text-3xl font-sci text-white font-bold">200</div>
+                    </div>
+                    <div class="text-center glass-panel px-6 py-2 border-neon-pink/50">
+                        <div class="text-xs text-gray-400 font-sci">SCORE</div>
+                        <div id="scoreDisplay" class="text-3xl font-sci text-neon-pink font-bold">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Area (Cards and Drop Zones) -->
+            <div id="gameArea" class="flex-1 w-full relative pointer-events-auto">
+                <!-- Cards will be injected here via JS -->
+                <div id="cardsContainer" class="absolute top-0 left-0 w-full h-[50%] pointer-events-none"></div>
+                
+                <!-- Drop Zones will be injected here via JS -->
+                <div id="zonesContainer" class="absolute bottom-[10%] left-0 w-full h-[40%] flex justify-center items-stretch gap-4 px-8"></div>
+            </div>
+
+            <!-- Submit Button (Hidden until all cards placed) -->
+            <div id="submitContainer" class="absolute bottom-[5%] w-full flex justify-center pointer-events-auto opacity-0 transition-opacity duration-300">
+                <button id="btnSubmitLevel" class="btn-cyber btn-success text-xl">ตรวจสอบคำตอบ</button>
+            </div>
+            
+            <!-- Level Transition Overlay -->
+            <div id="levelTransition" class="absolute inset-0 bg-black/90 z-50 hidden flex-col items-center justify-center pointer-events-auto">
+                <h2 id="transitionTitle" class="font-sci text-6xl text-3d mb-4">LEVEL CLEAR</h2>
+                <p id="transitionStats" class="text-2xl text-neon-blue mb-8">Score: +100</p>
+                <button id="btnNextLevel" class="btn-cyber text-2xl">NEXT LEVEL</button>
+            </div>
+        </div>
+
+        <!-- SCREEN 4: Dashboard -->
+        <div id="screenDashboard" class="screen items-center justify-center pointer-events-auto relative bg-black/80">
+            <div class="glass-panel p-8 max-w-3xl w-full text-center z-10">
+                <h1 class="font-sci text-5xl text-3d-pink mb-2">MISSION ACCOMPLISHED</h1>
+                <h2 class="text-2xl text-neon-blue mb-6 border-b border-neon-blue/30 pb-4">สรุปผลการปฏิบัติการ</h2>
+                
+                <div class="grid grid-cols-2 gap-4 text-left mb-8 bg-black/40 p-6 rounded-xl">
+                    <div>
+                        <p class="text-gray-400">Agent Name:</p>
+                        <p id="dashName" class="text-xl font-bold text-white mb-2">-</p>
+                        <p class="text-gray-400">Class/Room:</p>
+                        <p id="dashClass" class="text-lg text-white">-</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-gray-400">Rank:</p>
+                        <p id="dashRank" class="text-3xl font-sci text-neon-green font-bold mb-2">S</p>
+                        <div id="dashStars" class="text-2xl text-yellow-400">⭐⭐⭐⭐⭐</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-4 gap-2 mb-6 font-sci text-sm">
+                    <div class="glass-panel p-3">LV 1<br><span id="dashL1" class="text-neon-blue text-lg">0</span></div>
+                    <div class="glass-panel p-3">LV 2<br><span id="dashL2" class="text-neon-blue text-lg">0</span></div>
+                    <div class="glass-panel p-3">LV 3<br><span id="dashL3" class="text-neon-blue text-lg">0</span></div>
+                    <div class="glass-panel p-3">LV 4<br><span id="dashL4" class="text-neon-blue text-lg">0</span></div>
+                </div>
+
+                <div class="flex justify-between items-center glass-panel p-4 mb-6 border-neon-pink">
+                    <div class="text-left">
+                        <p class="text-sm text-gray-400">Total Score</p>
+                        <p id="dashTotal" class="text-4xl font-bold text-neon-pink">0 / 360</p>
+                    </div>
+                    <div class="text-right text-sm">
+                        <p>Correct: <span id="dashCorrect" class="text-green-400">0</span></p>
+                        <p>Wrong: <span id="dashWrong" class="text-red-400">0</span></p>
+                        <p>Time: <span id="dashTime">0</span>s</p>
+                    </div>
+                </div>
+
+                <div id="saveStatus" class="text-sm mb-4 h-6 text-gray-300">กำลังบันทึกข้อมูล...</div>
+                
+                <button onclick="location.reload()" class="btn-cyber text-lg">เล่นอีกครั้ง</button>
+            </div>
+        </div>
+        
+    </div>
+
+    <script>
+        // --- GAME DATA & CONFIG ---
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwgBSKKkfMJCcRwIVsphsezZxEFWASJt5sdaYWbMQZ0zrSrluSXn9Bn9nA2_Kkp4oRA/exec"; // ใส่ URL Google Apps Script ที่นี่
+        
+        const LEVEL_DATA = [
+            { // Level 1
+                id: 1, title: "แยกระบบ Automation กับ AI", maxTime: 200, pointsPerCard: 10,
+                zones: [
+                    { id: "auto", name: "Automation (อัตโนมัติ)", color: "neon-blue" },
+                    { id: "ai", name: "Artificial Intelligence (AI)", color: "neon-pink" }
+                ],
+                cards: [
+                    { id: "c1_1", text: "เครื่องซักผ้าตั้งเวลา", img: "https://img1.pic.in.th/images/messageImage_1783101336327.jpg", correct: "auto" },
+                    { id: "c1_2", text: "ไฟจราจรตั้งเวลา", img: "https://img1.pic.in.th/images/messageImage_1783101357796.jpg", correct: "auto" },
+                    { id: "c1_3", text: "เครื่องหยอดเหรียญ", img: "https://img1.pic.in.th/images/messageImage_1783101374326.jpg", correct: "auto" },
+                    { id: "c1_4", text: "ประตูอัตโนมัติ", img: "https://img2.pic.in.th/messageImage_1783101394019.jpg", correct: "auto" },
+                    { id: "c1_5", text: "สายพานโรงงาน", img: "https://img1.pic.in.th/images/messageImage_1783101417491.jpg", correct: "auto" },
+                    { id: "c1_6", text: "ChatGPT", img: "https://img1.pic.in.th/images/messageImage_1783101314090.jpg", correct: "ai" },
+                    { id: "c1_7", text: "Google Maps", img: "https://img2.pic.in.th/messageImage_1783101445608.jpg", correct: "ai" },
+                    { id: "c1_8", text: "Face Unlock", img: "https://img2.pic.in.th/messageImage_1783101457220.jpg", correct: "ai" },
+                    { id: "c1_9", text: "ระบบแนะนำ YouTube", img: "https://img1.pic.in.th/images/messageImage_1783101471860.jpg", correct: "ai" },
+                    { id: "c1_10", text: "รถยนต์ไร้คนขับ", img: "https://img1.pic.in.th/images/messageImage_1783101493267.jpg", correct: "ai" }
+                ]
+            },
+            { // Level 2
+                id: 2, title: "เรียงขั้นตอนการทำงานของ AI", maxTime: 200, pointsPerCard: 10,
+                zones: [
+                    { id: "s1", name: "ขั้นตอนที่ 1", color: "neon-blue" }, { id: "s2", name: "ขั้นตอนที่ 2", color: "neon-blue" },
+                    { id: "s3", name: "ขั้นตอนที่ 3", color: "neon-blue" }, { id: "s4", name: "ขั้นตอนที่ 4", color: "neon-pink" },
+                    { id: "s5", name: "ขั้นตอนที่ 5", color: "neon-pink" }, { id: "s6", name: "ขั้นตอนที่ 6", color: "neon-pink" }
+                ],
+                cards: [
+                    { id: "c2_1", text: "การรวบรวมข้อมูล (Data Collection)", img: null, correct: "s1" },
+                    { id: "c2_2", text: "การเตรียมข้อมูล (Data Preparation)", img: null, correct: "s2" },
+                    { id: "c2_3", text: "การฝึกโมเดล (Training)", img: null, correct: "s3" },
+                    { id: "c2_4", text: "สร้างโมเดล AI (AI Model)", img: null, correct: "s4" },
+                    { id: "c2_5", text: "การทดสอบ (Testing)", img: null, correct: "s5" },
+                    { id: "c2_6", text: "การปรับใช้ (Deployment)", img: null, correct: "s6" }
+                ]
+            },
+            { // Level 3
+                id: 3, title: "จำแนกประเภท AI (ANI vs AGI vs ASI)", maxTime: 200, pointsPerCard: 10,
+                zones: [
+                    { id: "ani", name: "Narrow AI (เฉพาะทาง)", color: "neon-blue", desc: "ทำงานเฉพาะด้าน" },
+                    { id: "agi", name: "General AI (ใกล้เคียงมนุษย์)", color: "neon-green", desc: "ทำได้ทุกอย่างเหมือนคน" },
+                    { id: "asi", name: "Super AI (เหนือมนุษย์)", color: "neon-pink", desc: "ฉลาดกว่ามนุษย์ในทุกด้าน" }
+                ],
+                cards: [
+                    { id: "c3_1", text: "ChatGPT", img: "https://img1.pic.in.th/images/messageImage_1783101314090.jpg", correct: "ani" },
+                    { id: "c3_2", text: "Face Unlock", img: "https://img2.pic.in.th/messageImage_1783101457220.jpg", correct: "ani" },
+                    { id: "c3_3", text: "AI Doctor", img: "https://img2.pic.in.th/messageImage_1783101578243.jpg", correct: "ani" },
+                    { id: "c3_4", text: "Robot Assistant", img: "https://img1.pic.in.th/images/messageImage_1783101568513.jpg", correct: "ani" },
+                    { id: "c3_5", text: "Self Driving", img: "https://img1.pic.in.th/images/messageImage_1783101598745.jpg", correct: "ani" },
+                    { id: "c3_6", text: "AGI", img: "https://img1.pic.in.th/images/messageImage_1783101613144.jpg", correct: "agi" },
+                    { id: "c3_7", text: "Virtual Teacher", img: "https://img2.pic.in.th/messageImage_1783101654160.jpg", correct: "agi" },
+                    { id: "c3_8", text: "AI Scientist", img: "https://img1.pic.in.th/images/messageImage_1783101630939.jpg", correct: "agi" },
+                    { id: "c3_9", text: "Military AI", img: "https://img1.pic.in.th/images/messageImage_1783101644375.jpg", correct: "asi" },
+                    { id: "c3_10", text: "Super AI", img: "https://img2.pic.in.th/messageImage_1783101665393.jpg", correct: "asi" }
+                ]
+            },
+            { // Level 4
+                id: 4, title: "จริยธรรม AI (Do & Don't)", maxTime: 200, pointsPerCard: 10,
+                zones: [
+                    { id: "do", name: "ควรทำ (DO)", color: "neon-green" },
+                    { id: "dont", name: "ไม่ควรทำ (DON'T)", color: "neon-alert" }
+                ],
+                cards: [
+                    { id: "c4_1", text: "ใช้ AI ตรวจคำผิด", img: null, correct: "do" },
+                    { id: "c4_2", text: "ใช้ AI สรุปบทเรียน", img: null, correct: "do" },
+                    { id: "c4_3", text: "ใช้ AI ช่วยค้นคว้า", img: null, correct: "do" },
+                    { id: "c4_4", text: "ใช้ AI สร้างโปสเตอร์", img: null, correct: "do" },
+                    { id: "c4_5", text: "ใช้ AI ช่วยเขียนโค้ด", img: null, correct: "do" },
+                    { id: "c4_6", text: "ใช้ AI ทำข้อสอบแทน", img: null, correct: "dont" },
+                    { id: "c4_7", text: "ปลอมเสียงผู้อื่น", img: null, correct: "dont" },
+                    { id: "c4_8", text: "สร้างข่าวปลอม", img: null, correct: "dont" },
+                    { id: "c4_9", text: "ละเมิดลิขสิทธิ์รูปภาพ", img: null, correct: "dont" },
+                    { id: "c4_10", text: "ทำ Deepfake หลอกลวง", img: null, correct: "dont" }
+                ]
+            }
+        ];
+
+        // --- GLOBAL STATE ---
+        const state = {
+            player: { name: "", class: "", room: "" },
+            scores: [0, 0, 0, 0], totalScore: 0, correctCount: 0, wrongCount: 0, totalTime: 0,
+            currentLevelIdx: 0, timeLeft: 0, timerInterval: null,
+            isAudioEnabled: true, controlMode: "ar", // "ar" or "mouse"
+            cards: [], zones: [], grabbedCard: null,
+            
+            // AR Tracking State
+            cursor: { x: window.innerWidth/2, y: window.innerHeight/2, isPinching: false },
+            targetCursor: { x: window.innerWidth/2, y: window.innerHeight/2 },
+            lastHandTime: Date.now(),
+            cameraLoaded: false
+        };
+
+        // DOM Elements
+        const screens = {
+            login: document.getElementById('screenLogin'),
+            guide: document.getElementById('screenGuide'),
+            game: document.getElementById('screenGame'),
+            dashboard: document.getElementById('screenDashboard')
+        };
+        const elCursor = document.getElementById('custom-cursor');
+        const cardsContainer = document.getElementById('cardsContainer');
+        const zonesContainer = document.getElementById('zonesContainer');
+
+        // --- AUDIO ENGINE (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (!state.isAudioEnabled || audioCtx.state === 'suspended') return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            
+            switch(type) {
+                case 'hover':
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+                    gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now); osc.stop(now + 0.1);
+                    break;
+                case 'grab':
+                    osc.type = 'square'; osc.frequency.setValueAtTime(300, now); osc.frequency.linearRampToValueAtTime(500, now + 0.1);
+                    gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now); osc.stop(now + 0.1);
+                    break;
+                case 'drop':
+                    osc.type = 'triangle'; osc.frequency.setValueAtTime(500, now); osc.frequency.linearRampToValueAtTime(200, now + 0.15);
+                    gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now); osc.stop(now + 0.15);
+                    break;
+                case 'correct':
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(523.25, now); // C5
+                    osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                    osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+                    gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.4);
+                    osc.start(now); osc.stop(now + 0.4);
+                    break;
+                case 'wrong':
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                    gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                    osc.start(now); osc.stop(now + 0.3);
+                    break;
+                case 'btn':
+                    osc.type = 'square'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+                    gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now); osc.stop(now + 0.1);
+                    break;
+                case 'victory':
+                    osc.type = 'triangle';
+                    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                        osc.frequency.setValueAtTime(freq, now + i*0.15);
+                    });
+                    gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.8);
+                    osc.start(now); osc.stop(now + 0.8);
+                    break;
+            }
+        }
+
+        // --- BACKGROUND VFX ---
+        const bgCanvas = document.getElementById('bgCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        let particles = [];
+        
+        function resizeCanvas() {
+            bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight;
+            const arCanvas = document.getElementById('arCanvas');
+            arCanvas.width = window.innerWidth; arCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function initParticles() {
+            particles = [];
+            for(let i=0; i<50; i++) {
+                particles.push({
+                    x: Math.random() * bgCanvas.width, y: Math.random() * bgCanvas.height,
+                    vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5,
+                    size: Math.random() * 2 + 1,
+                    color: Math.random() > 0.5 ? '#00f3ff' : '#ff00ff',
+                    alpha: Math.random() * 0.5 + 0.1
+                });
+            }
+        }
+
+        function drawBackground() {
+            bgCtx.fillStyle = '#050510';
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+            
+            // Grid
+            bgCtx.strokeStyle = 'rgba(0, 243, 255, 0.05)';
+            bgCtx.lineWidth = 1;
+            const gridSize = 50;
+            for(let x=0; x<bgCanvas.width; x+=gridSize) { bgCtx.beginPath(); bgCtx.moveTo(x,0); bgCtx.lineTo(x,bgCanvas.height); bgCtx.stroke(); }
+            for(let y=0; y<bgCanvas.height; y+=gridSize) { bgCtx.beginPath(); bgCtx.moveTo(0,y); bgCtx.lineTo(bgCanvas.width,y); bgCtx.stroke(); }
+
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx; p.y += p.vy;
+                if(p.x < 0 || p.x > bgCanvas.width) p.vx *= -1;
+                if(p.y < 0 || p.y > bgCanvas.height) p.vy *= -1;
+                bgCtx.beginPath();
+                bgCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                bgCtx.fillStyle = p.color;
+                bgCtx.globalAlpha = p.alpha;
+                bgCtx.fill();
+            });
+            bgCtx.globalAlpha = 1;
+            requestAnimationFrame(drawBackground);
+        }
+        initParticles(); drawBackground();
+
+        // --- AR & MEDIAPIPE LOGIC ---
+        const videoElement = document.getElementById('webcam');
+        const arCanvas = document.getElementById('arCanvas');
+        const arCtx = arCanvas.getContext('2d');
+        
+        let hands;
+        let camera;
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        function initMediaPipe() {
+            document.getElementById('statusMsg').innerText = "Loading AI Model...";
+            hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+            hands.onResults(onARResults);
+
+            camera = new Camera(videoElement, {
+                onFrame: async () => { await hands.send({image: videoElement}); calculateFPS(); },
+                width: 640, height: 480
+            });
+            
+            camera.start().then(() => {
+                state.cameraLoaded = true;
+                document.getElementById('statusMsg').innerText = "Camera Active";
+            }).catch(err => {
+                console.error(err);
+                switchToMouseMode("ไม่พบกล้อง สลับเป็น Mouse Mode");
+            });
+        }
+
+        function calculateFPS() {
+            const now = performance.now();
+            frameCount++;
+            if(now - lastFrameTime >= 1000) {
+                fps = frameCount;
+                document.getElementById('fpsCounter').innerText = `FPS: ${fps}`;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+        }
+
+        function onARResults(results) {
+            arCtx.clearRect(0, 0, arCanvas.width, arCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                state.lastHandTime = Date.now();
+                if(state.controlMode === 'mouse' && state.cameraLoaded) {
+                    // Could prompt to switch back, but auto-switch can be annoying if they chose mouse.
+                }
+
+                // Only use the first detected hand for cursor control to avoid confusion
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Draw skeleton
+                drawConnectors(arCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 243, 255, 0.5)', lineWidth: 2});
+                drawLandmarks(arCtx, landmarks, {color: '#ff00ff', lineWidth: 1, radius: 2});
+
+                // Calculate Index Tip (8) and Thumb Tip (4) positions mapped to screen
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+                
+                // Flip X because webcam is mirrored
+                const screenX = (1 - indexTip.x) * window.innerWidth;
+                const screenY = indexTip.y * window.innerHeight;
+                
+                state.targetCursor.x = screenX;
+                state.targetCursor.y = screenY;
+
+                // Pinch detection (distance in normalized coordinates)
+                const dx = thumbTip.x - indexTip.x;
+                const dy = thumbTip.y - indexTip.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                
+                const PINCH_THRESHOLD = 0.05;
+                const RELEASE_THRESHOLD = 0.07;
+
+                if (distance < PINCH_THRESHOLD && !state.cursor.isPinching) {
+                    triggerPinch(true);
+                } else if (distance > RELEASE_THRESHOLD && state.cursor.isPinching) {
+                    triggerPinch(false);
+                }
+            } else {
+                // Auto Fallback check
+                if (state.controlMode === 'ar' && Date.now() - state.lastHandTime > 3000) {
+                    switchToMouseMode("ไม่พบมือ 3 วินาที สลับเป็น Mouse Mode");
+                }
+            }
+        }
+
+        // --- INPUT ABSTRACTION (Cursor Loop) ---
+        function cursorLoop() {
+            if(state.controlMode === 'ar') {
+                // Smooth interpolation for AR cursor
+                state.cursor.x += (state.targetCursor.x - state.cursor.x) * 0.4;
+                state.cursor.y += (state.targetCursor.y - state.cursor.y) * 0.4;
+                
+                elCursor.style.display = 'flex';
+                elCursor.style.left = `${state.cursor.x}px`;
+                elCursor.style.top = `${state.cursor.y}px`;
+                
+                if(state.cursor.isPinching) elCursor.classList.add('cursor-pinch');
+                else elCursor.classList.remove('cursor-pinch');
+
+                // Simulate Hover Effect via DOM Check
+                if(!state.grabbedCard) {
+                    const elUnder = document.elementFromPoint(state.cursor.x, state.cursor.y);
+                    document.querySelectorAll('.game-card').forEach(c => c.classList.remove('is-hovered'));
+                    if(elUnder && elUnder.closest('.game-card')) {
+                        const cardEl = elUnder.closest('.game-card');
+                        cardEl.classList.add('is-hovered');
+                    }
+                }
+            } else {
+                elCursor.style.display = 'none'; // Native mouse handles it
+            }
+
+            // Move grabbed card
+            if (state.grabbedCard) {
+                // Center card on cursor
+                const cardEl = document.getElementById(state.grabbedCard.id);
+                const rect = cardEl.getBoundingClientRect();
+                cardEl.style.left = `${state.cursor.x - rect.width/2}px`;
+                cardEl.style.top = `${state.cursor.y - rect.height/2}px`;
+                
+                // Highlight valid drop zones
+                checkHoverZone(state.cursor.x, state.cursor.y);
+            }
+
+            requestAnimationFrame(cursorLoop);
+        }
+        cursorLoop();
+
+        function triggerPinch(isDown) {
+            state.cursor.isPinching = isDown;
+            if (isDown) {
+                // Try to grab
+                const elUnder = document.elementFromPoint(state.cursor.x, state.cursor.y);
+                const cardEl = elUnder ? elUnder.closest('.game-card') : null;
+                if (cardEl && !cardEl.dataset.locked) {
+                    grabCard(cardEl.id);
+                }
+            } else {
+                // Release
+                if (state.grabbedCard) dropCard();
+            }
+        }
+
+        function switchToMouseMode(msg = "สลับเป็น Mouse Mode") {
+            if(state.controlMode === 'mouse') return;
+            state.controlMode = 'mouse';
+            document.getElementById('modeIcon').innerText = '🎥';
+            document.getElementById('modeText').innerText = 'AR Mode';
+            document.getElementById('statusMsg').innerText = msg;
+            
+            // Enable mouse events on cards
+            document.getElementById('uiLayer').classList.remove('pointer-events-none');
+        }
+
+        function switchToARMode() {
+            if(!state.cameraLoaded) { alert("รอการเชื่อมต่อกล้อง..."); return; }
+            state.controlMode = 'ar';
+            document.getElementById('modeIcon').innerText = '🖱️';
+            document.getElementById('modeText').innerText = 'Mouse Mode';
+            document.getElementById('statusMsg').innerText = 'AR Mode Active';
+            state.lastHandTime = Date.now(); // reset timer
+        }
+
+        document.getElementById('btnToggleMode').addEventListener('click', () => {
+            playSound('btn');
+            if(state.controlMode === 'ar') switchToMouseMode("เปิดใช้งาน Mouse");
+            else switchToARMode();
+        });
+        
+        document.getElementById('btnToggleAudio').addEventListener('click', (e) => {
+            state.isAudioEnabled = !state.isAudioEnabled;
+            e.target.innerText = state.isAudioEnabled ? '🔊' : '🔇';
+            if(state.isAudioEnabled) audioCtx.resume();
+        });
+
+        // Mouse/Touch Event Listeners (Fallback)
+        document.addEventListener('mousedown', e => { if(state.controlMode === 'mouse') handlePointerDown(e.clientX, e.clientY); });
+        document.addEventListener('mousemove', e => { if(state.controlMode === 'mouse') handlePointerMove(e.clientX, e.clientY); });
+        document.addEventListener('mouseup', () => { if(state.controlMode === 'mouse') handlePointerUp(); });
+        
+        document.addEventListener('touchstart', e => { if(state.controlMode === 'mouse') handlePointerDown(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+        document.addEventListener('touchmove', e => { if(state.controlMode === 'mouse' && state.grabbedCard) { e.preventDefault(); handlePointerMove(e.touches[0].clientX, e.touches[0].clientY); } }, {passive:false});
+        document.addEventListener('touchend', () => { if(state.controlMode === 'mouse') handlePointerUp(); });
+
+        function handlePointerDown(x, y) {
+            state.cursor.x = x; state.cursor.y = y;
+            const elUnder = document.elementFromPoint(x, y);
+            const cardEl = elUnder ? elUnder.closest('.game-card') : null;
+            if (cardEl && !cardEl.dataset.locked) grabCard(cardEl.id);
+        }
+        function handlePointerMove(x, y) {
+            state.cursor.x = x; state.cursor.y = y;
+        }
+        function handlePointerUp() {
+            if (state.grabbedCard) dropCard();
+        }
+
+        // --- GAME LOGIC ---
+        function grabCard(id) {
+            const cardObj = state.cards.find(c => c.id === id);
+            if (!cardObj) return;
+            state.grabbedCard = cardObj;
+            const el = document.getElementById(id);
+            el.classList.add('is-grabbed');
+            el.dataset.currentZone = ""; // Detach from zone
+            playSound('grab');
+            updateProgress();
+        }
+
+        function dropCard() {
+            if (!state.grabbedCard) return;
+            const el = document.getElementById(state.grabbedCard.id);
+            el.classList.remove('is-grabbed');
+            
+            // Find drop zone
+            const zoneEl = getHoveredZone(state.cursor.x, state.cursor.y);
+            
+            if (zoneEl) {
+                // Snap to zone
+                const zRect = zoneEl.getBoundingClientRect();
+                const containerRect = document.getElementById('gameArea').getBoundingClientRect();
+                
+                // Add some random offset within zone so cards don't perfectly stack
+                const offsetX = (Math.random() - 0.5) * 20;
+                const offsetY = (Math.random() - 0.5) * 20;
+                
+                el.style.left = `${zRect.left - containerRect.left + zRect.width/2 - el.offsetWidth/2 + offsetX}px`;
+                el.style.top = `${zRect.top - containerRect.top + zRect.height/2 - el.offsetHeight/2 + offsetY}px`;
+                
+                el.dataset.currentZone = zoneEl.id.replace('zone-', '');
+                playSound('drop');
+            } else {
+                // Return to original randomized area at top
+                resetCardPosition(el);
+                playSound('wrong'); // slight error sound
+            }
+            
+            document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('slot-pulse'));
+            state.grabbedCard = null;
+            updateProgress();
+        }
+
+        function getHoveredZone(x, y) {
+            // Need to hide grabbed card temporarily to check element under it
+            const el = document.getElementById(state.grabbedCard.id);
+            el.style.display = 'none';
+            const elUnder = document.elementFromPoint(x, y);
+            el.style.display = 'flex';
+            
+            if(elUnder) {
+                const zone = elUnder.closest('.drop-zone');
+                return zone;
+            }
+            return null;
+        }
+
+        function checkHoverZone(x, y) {
+            const zoneEl = getHoveredZone(x, y);
+            document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('slot-pulse'));
+            if(zoneEl) zoneEl.classList.add('slot-pulse');
+        }
+
+        function resetCardPosition(el) {
+            const containerWidth = document.getElementById('cardsContainer').offsetWidth;
+            const containerHeight = document.getElementById('cardsContainer').offsetHeight;
+            const maxW = containerWidth - 150;
+            const maxH = containerHeight - 150;
+            
+            // Try to find a spot that doesn't overlap too much (simplified random for performance)
+            el.style.left = `${Math.max(20, Math.random() * maxW)}px`;
+            el.style.top = `${Math.max(20, Math.random() * maxH)}px`;
+            el.dataset.currentZone = "";
+        }
+
+        // --- LEVEL FLOW ---
+        function startLevel(index) {
+            state.currentLevelIdx = index;
+            const level = LEVEL_DATA[index];
+            state.cards = JSON.parse(JSON.stringify(level.cards));
+            state.zones = level.zones;
+            state.timeLeft = level.maxTime;
+            
+            document.getElementById('levelTitle').innerText = `LEVEL ${index + 1}: ${level.title}`;
+            updateTimerDisplay();
+            
+            // Build Zones
+            zonesContainer.innerHTML = '';
+            level.zones.forEach(z => {
+                const zDiv = document.createElement('div');
+                zDiv.id = `zone-${z.id}`;
+                zDiv.className = `drop-zone flex-1 border-${z.color} bg-${z.color.split('-')[1]}-900/20`;
+                let html = `<h3 class="text-${z.color} font-sci font-bold text-lg text-center bg-black/50 w-full py-1 rounded">${z.name}</h3>`;
+                if(z.desc) html += `<p class="text-xs text-gray-300 mt-1">${z.desc}</p>`;
+                zDiv.innerHTML = html;
+                zonesContainer.appendChild(zDiv);
+            });
+
+            // Build Cards
+            cardsContainer.innerHTML = '';
+            // Shuffle cards
+            state.cards.sort(() => Math.random() - 0.5);
+            
+            state.cards.forEach((c, i) => {
+                const cDiv = document.createElement('div');
+                cDiv.id = c.id;
+                cDiv.className = 'game-card hover-scale pointer-events-auto';
+                cDiv.dataset.correctZone = c.correct;
+                cDiv.dataset.currentZone = "";
+                
+                let content = '';
+                if(c.img) content += `<img src="${c.img}" alt="${c.text}" onerror="this.src='https://placehold.co/80x80/050510/00f3ff?text=AI'">`;
+                content += `<span>${c.text}</span>`;
+                cDiv.innerHTML = content;
+                
+                cardsContainer.appendChild(cDiv);
+                
+                // Initial placement logic (Grid-based to avoid overlap)
+                const contW = cardsContainer.offsetWidth;
+                const contH = cardsContainer.offsetHeight;
+                const cols = Math.floor(contW / 160);
+                const rows = Math.floor(contH / 160);
+                const col = i % cols;
+                const row = Math.floor(i / cols) % rows;
+                
+                const baseX = col * 160 + 20;
+                const baseY = row * 160 + 20;
+                
+                // Add tiny random scatter
+                cDiv.style.left = `${baseX + (Math.random()*20 - 10)}px`;
+                cDiv.style.top = `${baseY + (Math.random()*20 - 10)}px`;
+            });
+
+            updateProgress();
+            
+            // Start Timer
+            clearInterval(state.timerInterval);
+            state.timerInterval = setInterval(() => {
+                state.timeLeft--;
+                updateTimerDisplay();
+                state.totalTime++;
+                if(state.timeLeft <= 0) {
+                    clearInterval(state.timerInterval);
+                    checkLevelAnswers(true); // Force check on timeout
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const td = document.getElementById('timerDisplay');
+            td.innerText = state.timeLeft;
+            if(state.timeLeft < 30) td.classList.add('text-red-500', 'animate-pulse');
+            else td.classList.remove('text-red-500', 'animate-pulse');
+        }
+
+        function updateProgress() {
+            const placedCount = document.querySelectorAll('.game-card[data-current-zone]:not([data-current-zone=""])').length;
+            const total = state.cards.length;
+            const pct = Math.round((placedCount / total) * 100);
+            
+            document.getElementById('progressBar').style.width = `${pct}%`;
+            document.getElementById('progressText').innerText = `${pct}%`;
+
+            const submitBtn = document.getElementById('submitContainer');
+            if(placedCount === total) {
+                submitBtn.classList.remove('opacity-0', 'pointer-events-none');
+            } else {
+                submitBtn.classList.add('opacity-0', 'pointer-events-none');
+            }
+        }
+
+        // --- VALIDATION & SCORING ---
+        document.getElementById('btnSubmitLevel').addEventListener('click', () => {
+            playSound('btn');
+            checkLevelAnswers(false);
+        });
+
+        function checkLevelAnswers(isTimeout) {
+            clearInterval(state.timerInterval);
+            document.getElementById('submitContainer').classList.add('opacity-0', 'pointer-events-none');
+            
+            let levelScore = 0;
+            let allCorrect = true;
+            const levelData = LEVEL_DATA[state.currentLevelIdx];
+            
+            document.querySelectorAll('.game-card').forEach(cardEl => {
+                const curZ = cardEl.dataset.currentZone;
+                const corZ = cardEl.dataset.correctZone;
+                cardEl.dataset.locked = "true"; // Prevent further dragging
+                
+                if (curZ === corZ) {
+                    cardEl.classList.add('correct-anim');
+                    levelScore += levelData.pointsPerCard;
+                    state.correctCount++;
+                } else {
+                    cardEl.classList.add('wrong-anim');
+                    allCorrect = false;
+                    state.wrongCount++;
+                }
+            });
+
+            state.scores[state.currentLevelIdx] = levelScore;
+            state.totalScore += levelScore;
+            
+            document.getElementById('scoreDisplay').innerText = state.totalScore;
+
+            if (allCorrect) playSound('victory');
+            else playSound('wrong');
+
+            // Show Transition
+            setTimeout(() => {
+                document.getElementById('transitionTitle').innerText = isTimeout ? "TIME'S UP" : (allCorrect ? "PERFECT CLEAR!" : "LEVEL CLEARED");
+                document.getElementById('transitionTitle').className = `font-sci text-6xl text-3d mb-4 ${allCorrect ? 'text-neon-green' : (isTimeout ? 'text-red-500' : 'text-neon-blue')}`;
+                document.getElementById('transitionStats').innerText = `Level Score: +${levelScore} Points`;
+                
+                const btnNext = document.getElementById('btnNextLevel');
+                if (state.currentLevelIdx < 3) {
+                    btnNext.innerText = "NEXT LEVEL";
+                    btnNext.onclick = () => {
+                        playSound('btn');
+                        document.getElementById('levelTransition').classList.add('hidden');
+                        document.getElementById('levelTransition').classList.remove('flex');
+                        startLevel(state.currentLevelIdx + 1);
+                    };
+                } else {
+                    btnNext.innerText = "VIEW DASHBOARD";
+                    btnNext.onclick = () => {
+                        playSound('btn');
+                        showDashboard();
+                    };
+                }
+                
+                document.getElementById('levelTransition').classList.remove('hidden');
+                document.getElementById('levelTransition').classList.add('flex');
+            }, 2000);
+        }
+
+        // --- DASHBOARD & SAVE ---
+        function showDashboard() {
+            switchScreen('dashboard');
+            playSound('victory');
+            
+            document.getElementById('dashName').innerText = state.player.name;
+            document.getElementById('dashClass').innerText = `${state.player.class} / ${state.player.room}`;
+            
+            document.getElementById('dashL1').innerText = state.scores[0];
+            document.getElementById('dashL2').innerText = state.scores[1];
+            document.getElementById('dashL3').innerText = state.scores[2];
+            document.getElementById('dashL4').innerText = state.scores[3];
+            
+            document.getElementById('dashTotal').innerText = `${state.totalScore} / 360`;
+            document.getElementById('dashCorrect').innerText = state.correctCount;
+            document.getElementById('dashWrong').innerText = state.wrongCount;
+            document.getElementById('dashTime').innerText = state.totalTime;
+
+            // Calculate Rank
+            let rank = 'F'; let stars = '';
+            const pct = state.totalScore / 360;
+            if(pct >= 0.9) { rank = 'S'; stars = '⭐⭐⭐⭐⭐'; document.getElementById('dashRank').className = "text-5xl font-sci text-neon-pink font-bold mb-2 shadow-neon-pink"; }
+            else if(pct >= 0.75) { rank = 'A'; stars = '⭐⭐⭐⭐'; document.getElementById('dashRank').className = "text-5xl font-sci text-neon-blue font-bold mb-2"; }
+            else if(pct >= 0.6) { rank = 'B'; stars = '⭐⭐⭐'; document.getElementById('dashRank').className = "text-5xl font-sci text-neon-green font-bold mb-2"; }
+            else if(pct >= 0.5) { rank = 'C'; stars = '⭐⭐'; document.getElementById('dashRank').className = "text-5xl font-sci text-yellow-400 font-bold mb-2"; }
+            else { rank = 'D'; stars = '⭐'; document.getElementById('dashRank').className = "text-5xl font-sci text-gray-400 font-bold mb-2"; }
+            
+            document.getElementById('dashRank').innerText = rank;
+            document.getElementById('dashStars').innerText = stars;
+
+            saveScore();
+        }
+
+        async function saveScore() {
+            if(!WEB_APP_URL) {
+                document.getElementById('saveStatus').innerText = "⚠️ ไม่ได้ตั้งค่า URL สำหรับบันทึกข้อมูล (เล่นแบบออฟไลน์)";
+                return;
+            }
+            
+            const data = {
+                name: state.player.name, class: state.player.class, room: state.player.room,
+                l1: state.scores[0], l2: state.scores[1], l3: state.scores[2], l4: state.scores[3],
+                total: state.totalScore, correct: state.correctCount, wrong: state.wrongCount,
+                timeUsed: state.totalTime,
+                date: new Date().toLocaleDateString('th-TH'),
+                time: new Date().toLocaleTimeString('th-TH')
+            };
+
+            try {
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // standard for simple google script posts
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                document.getElementById('saveStatus').innerText = "✅ บันทึกข้อมูลสำเร็จ";
+                document.getElementById('saveStatus').classList.replace('text-gray-300', 'text-neon-green');
+            } catch(e) {
+                console.error(e);
+                document.getElementById('saveStatus').innerText = "❌ เกิดข้อผิดพลาดในการบันทึก";
+                document.getElementById('saveStatus').classList.replace('text-gray-300', 'text-red-400');
+            }
+        }
+
+        // --- UI NAVIGATION ---
+        function switchScreen(screenName) {
+            Object.values(screens).forEach(s => {
+                s.classList.remove('active-screen');
+                s.classList.add('hidden'); // Tailwind override
+            });
+            screens[screenName].classList.add('active-screen');
+            screens[screenName].classList.remove('hidden');
+        }
+
+        // Event Listeners
+        document.getElementById('loginForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            playSound('btn');
+            state.player.name = document.getElementById('playerName').value;
+            state.player.class = document.getElementById('playerClass').value;
+            state.player.room = document.getElementById('playerRoom').value;
+            
+            // Start Init MediaPipe when passing login to ask for camera permission
+            initMediaPipe();
+            audioCtx.resume(); // Unlock audio context on user interaction
+            
+            switchScreen('guide');
+        });
+
+        document.getElementById('btnStartGame').addEventListener('click', () => {
+            playSound('btn');
+            switchScreen('game');
+            startLevel(0);
+        });
+
+        // Ensure proper loading
+        window.onload = () => {
+            console.log("System Initialized");
+        };
+
+    </script>
+</body>
+</html>
